@@ -1,0 +1,116 @@
+# Git specific
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+
+# Docker specific
+Dockerfile
+.dockerignore
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg
+MANIFEST
+
+# Virtual environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+__pypackages__/
+
+# Test & Coverage artifacts
+tests/
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# IDE / Editor config
+.idea/
+.vscode/
+.spyderproject
+.spyproject
+.ropeproject
+
+# Type checker caches
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+
+# Documentation build output
+docs/_build/
+site/
+
+# Local output / logs / temporary files
+*.log
+local-output/
+output/
+effective_training_config.json
+pip-log.txt
+pip-delete-this-directory.txt
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Other build/dev artifacts (from .gitignore)
+*.manifest
+*.spec
+*.mo
+*.pot
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+.scrapy
+target/
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+celerybeat-schedule
+celerybeat.pid
+*.sage.py
+
+# Lock files (assuming installed via requirements/pyproject inside container)
+# Pipfile.lock
+# poetry.lock
+# pdm.lock
+# .pdm.toml
+
+# README (often not needed in runtime image)
+# README.md

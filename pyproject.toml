@@ -1,0 +1,66 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finetune-embedding"
+version = "0.1.0" # Or your desired version
+authors = [
+  { name="Your Name", email="your.email@example.com" },
+]
+description = "A package for fine-tuning sentence embedding models."
+readme = "README.md"
+requires-python = ">=3.9" # Match your supported versions
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License", # Match your license
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # List your core dependencies here, e.g.:
+    "sentence-transformers>=2.7.0", # Use appropriate version constraints
+    "torch>=2.0.0",
+    "datasets>=2.10.0",
+    "pydantic>=2.0.0",
+    "peft>=0.8.0", # If using LoRA
+    "python-dotenv>=1.0.0",
+    "numpy",
+    # Add other core libraries like accelerate, transformers, etc.
+]
+
+[project.optional-dependencies]
+dev = [
+    # List development/testing dependencies here, e.g.:
+    "pytest",
+    "pytest-mock",
+    "pytest-cov",
+    "flake8",
+    "black",
+    "isort",
+    "mypy",
+    # Add others like pre-commit, types-* if needed
+]
+
+[project.scripts]
+# If you want a command-line script generated upon installation
+# finetune-embedding = "finetune_embedding.main:main"
+
+[project.urls]
+"Homepage" = "https://github.com/etetteh/finetune-embedding" # Update URL if needed
+"Bug Tracker" = "https://github.com/etetteh/finetune-embedding/issues" # Update URL if needed
+
+# Optional: Tool-specific configurations (like black, isort, mypy, pytest)
+# can also go here.
+# [tool.black]
+# line-length = 88
+#
+# [tool.isort]
+# profile = "black"
+#
+# [tool.mypy]
+# ignore_missing_imports = true
+# # Add other mypy settings
+#
+# [tool.pytest.ini_options]
+# # Add pytest settings

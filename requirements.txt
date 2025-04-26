@@ -1,0 +1,15 @@
+# Core dependencies for fine-tuning script
+torch
+datasets
+peft
+sentence-transformers
+accelerate
+hf_xet
+faiss-cpu
+pytest
+wandb
+dotenv
+numpy<2
+pytest-mock
+hypothesis
+pydantic
