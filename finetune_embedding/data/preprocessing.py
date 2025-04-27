@@ -2,7 +2,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union  # Added List
 
 from datasets import Dataset, DatasetDict
 
@@ -182,7 +182,15 @@ def auto_split_dataset(
         temp_train_eval_data = train_eval_split["train"]
         test_data_auto = train_eval_split["test"]
 
-        eval_prop_relative = DEFAULT_EVAL_PROP / train_eval_prop
+        # Ensure train_eval_prop is not zero before division
+        if train_eval_prop <= 0:
+            logger.warning(
+                "Train+Eval proportion is zero or negative after test split. Cannot calculate relative eval proportion. Using 0.1."
+            )
+            eval_prop_relative = 0.1
+        else:
+            eval_prop_relative = DEFAULT_EVAL_PROP / train_eval_prop
+
         if not (0.0 < eval_prop_relative < 1.0):
             logger.warning(
                 f"Calculated relative eval proportion ({eval_prop_relative:.2f}) is invalid. Setting to 0.1."
@@ -215,69 +223,116 @@ def auto_split_dataset(
         return DatasetDict({config.train_split: source_data})
 
 
+# --- Refactored Helper Functions for select_and_limit_splits ---
+
+
+def _find_target_eval_split_name(
+    user_specified_split: str, available_splits: List[str]
+) -> str:
+    """Finds the actual evaluation split name, attempting auto-detection if needed."""
+    target_split_name = user_specified_split
+    common_eval_names = ["dev", "validation", "eval", "val"]
+
+    if target_split_name in available_splits:
+        logger.info(f"Using specified eval split name: '{target_split_name}'")
+        return target_split_name
+
+    logger.warning(
+        f"Configured eval split '{target_split_name}' not found in available splits: {available_splits}. Attempting auto-detection..."
+    )
+    for potential_name in common_eval_names:
+        if potential_name in available_splits:
+            logger.info(
+                f"Automatically selected existing split '{potential_name}' for evaluation."
+            )
+            return potential_name
+
+    logger.warning(
+        f"Could not find any common evaluation splits ({common_eval_names}) either. Evaluation data may be unavailable."
+    )
+    # Return the original user-specified name even if not found,
+    # let the later logic handle the None dataset.
+    return user_specified_split
+
+
+def _select_limit_single_split(
+    split_key: str, limit: int, available_dict: DatasetDict
+) -> Optional[Dataset]:
+    """Selects a single split from the dict and applies a limit."""
+    if split_key not in available_dict:
+        logger.warning(
+            f"Split '{split_key}' not found in available splits: {list(available_dict.keys())}. Skipping this split."
+        )
+        return None
+
+    data = available_dict[split_key]
+    orig_len = len(data)
+    if orig_len == 0:
+        logger.warning(f"Split '{split_key}' is empty. Skipping.")
+        return None
+
+    if limit > 0 and limit < orig_len:
+        logger.info(
+            f"Limiting '{split_key}' split from {orig_len} to {limit} examples."
+        )
+        return data.select(range(limit))
+    elif limit > 0:
+        logger.info(
+            f"Limit ({limit}) >= available ({orig_len}) for '{split_key}'. Using all examples."
+        )
+        return data
+    else:
+        logger.info(f"Using full '{split_key}' split ({orig_len} examples).")
+        return data
+
+
+def _validate_final_columns(train_ds: Dataset, dataset_format: str):
+    """Validates that the final training dataset has the required columns."""
+    try:
+        expected_cols = get_expected_columns(dataset_format)
+        final_train_cols = set(train_ds.column_names)
+        missing_req_cols = set(expected_cols.values()) - final_train_cols
+        if missing_req_cols:
+            raise DataLoadingError(
+                f"Train dataset missing required columns for format '{dataset_format}'. "
+                f"Required: {expected_cols.values()}, Missing: {missing_req_cols}. "
+                f"Available: {final_train_cols}"
+            )
+        logger.info("Required columns verified in training data.")
+    except ConfigurationError as e:
+        # Catch error from get_expected_columns if format is bad
+        raise DataLoadingError(
+            f"Cannot verify columns due to invalid format: {e}"
+        ) from e
+
+
+# --- Refactored Main Function ---
+
+
 def select_and_limit_splits(
     dataset_dict: DatasetDict, config: DatasetConfig
 ) -> DatasetContainer:
     """Selects train, eval, test splits based on config, applies limits, and returns a container."""
     logger.info("Selecting and limiting dataset splits...")
     available_split_names = list(dataset_dict.keys())
-    train_ds, eval_ds, test_ds = None, None, None
 
-    user_specified_eval_split = config.eval_split
-    target_eval_split_name = user_specified_eval_split
-    common_eval_names = ["dev", "validation", "eval", "val"]
+    # 1. Determine the target evaluation split name
+    target_eval_split_name = _find_target_eval_split_name(
+        config.eval_split, available_split_names
+    )
 
-    if target_eval_split_name not in available_split_names:
-        logger.warning(
-            f"Configured eval split '{target_eval_split_name}' not found in available splits: {available_split_names}. Attempting auto-detection..."
-        )
-        found_alternative = False
-        for potential_name in common_eval_names:
-            if potential_name in available_split_names:
-                target_eval_split_name = potential_name
-                logger.info(
-                    f"Automatically selected existing split '{target_eval_split_name}' for evaluation."
-                )
-                found_alternative = True
-                break
-        if not found_alternative:
-            logger.warning(
-                f"Could not find any common evaluation splits ({common_eval_names}) either. Evaluation data may be unavailable."
-            )
-    else:
-        logger.info(f"Using specified eval split name: '{target_eval_split_name}'")
+    # 2. Select and limit each split
+    train_ds = _select_limit_single_split(
+        config.train_split, config.train_limit, dataset_dict
+    )
+    eval_ds = _select_limit_single_split(
+        target_eval_split_name, config.eval_limit, dataset_dict
+    )
+    test_ds = _select_limit_single_split(
+        config.test_split, config.test_limit, dataset_dict
+    )
 
-    def _select_limit(
-        split_key: str, limit: int, available_dict: DatasetDict
-    ) -> Optional[Dataset]:
-        if split_key not in available_dict:
-            logger.warning(
-                f"Split '{split_key}' not found in available splits: {list(available_dict.keys())}. Skipping this split."
-            )
-            return None
-        data = available_dict[split_key]
-        orig_len = len(data)
-        if orig_len == 0:
-            logger.warning(f"Split '{split_key}' is empty. Skipping.")
-            return None
-        if limit > 0 and limit < orig_len:
-            logger.info(
-                f"Limiting '{split_key}' split from {orig_len} to {limit} examples."
-            )
-            return data.select(range(limit))
-        elif limit > 0:
-            logger.info(
-                f"Limit ({limit}) >= available ({orig_len}) for '{split_key}'. Using all examples."
-            )
-            return data
-        else:
-            logger.info(f"Using full '{split_key}' split ({orig_len} examples).")
-            return data
-
-    train_ds = _select_limit(config.train_split, config.train_limit, dataset_dict)
-    eval_ds = _select_limit(target_eval_split_name, config.eval_limit, dataset_dict)
-    test_ds = _select_limit(config.test_split, config.test_limit, dataset_dict)
-
+    # 3. Validate essential splits and log warnings
     if train_ds is None or len(train_ds) == 0:
         raise DataLoadingError(
             "Training dataset is empty after processing. Check config/limits/data."
@@ -291,28 +346,16 @@ def select_and_limit_splits(
             "Test dataset is empty or unavailable. Final evaluation on test set will be skipped."
         )
 
+    # 4. Log final sizes
     logger.info(
         f"Final dataset sizes: "
-        f"Train={len(train_ds) if train_ds else 0}, "
+        f"Train={len(train_ds)}, "  # train_ds is guaranteed non-None here
         f"Eval={len(eval_ds) if eval_ds else 0} (used split name: '{target_eval_split_name if eval_ds else 'N/A'}'), "
         f"Test={len(test_ds) if test_ds else 0}"
     )
 
-    # Validate Required Columns after all processing
-    try:
-        expected_cols = get_expected_columns(config.dataset_format)
-        final_train_cols = set(train_ds.column_names)
-        missing_req_cols = set(expected_cols.values()) - final_train_cols
-        if missing_req_cols:
-            raise DataLoadingError(
-                f"Train dataset missing required columns for format '{config.dataset_format}'. Required: {expected_cols.values()}, Missing: {missing_req_cols}. Available: {final_train_cols}"
-            )
-        logger.info("Required columns verified in training data.")
-    except (
-        ConfigurationError
-    ) as e:  # Catch error from get_expected_columns if format is bad
-        raise DataLoadingError(
-            f"Cannot verify columns due to invalid format: {e}"
-        ) from e
+    # 5. Validate required columns in the training set
+    _validate_final_columns(train_ds, config.dataset_format)
 
+    # 6. Return the container
     return DatasetContainer(train=train_ds, eval_dataset=eval_ds, test=test_ds)
