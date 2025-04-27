@@ -1,8 +1,9 @@
 # finetune_embedding/model/loaders.py
 import logging
+
 import torch
+from peft import PeftModel  # Assuming PeftModel might be used
 from sentence_transformers import SentenceTransformer, SentenceTransformerModelCardData
-from peft import PeftModel # Assuming PeftModel might be used
 
 # Assuming these are defined elsewhere
 from ..config.settings import ModelConfig, TrainingConfig
@@ -10,10 +11,11 @@ from ..exceptions import ModelError
 
 logger = logging.getLogger(__name__)
 
+
 def initialize_model(
     model_config: ModelConfig,
-    training_config: TrainingConfig, # Needed for precision flags
-    device: torch.device
+    training_config: TrainingConfig,  # Needed for precision flags
+    device: torch.device,
 ) -> SentenceTransformer:
     """Initializes the SentenceTransformer model based on configuration."""
     logger.info(f"Initializing model: {model_config.model_name_or_path}")
@@ -50,25 +52,35 @@ def initialize_model(
         # Check if it's already a PEFT model (best effort)
         try:
             if isinstance(model._first_module().auto_model, PeftModel):
-                 logger.warning(f"Model loaded from '{model_config.model_name_or_path}' seems to already be a PEFT model. Ensure this is intended.")
+                logger.warning(
+                    f"Model loaded from '{model_config.model_name_or_path}' seems to already be a PEFT model. Ensure this is intended."
+                )
         except Exception:
-             logger.debug("Could not check if loaded model is PeftModel.")
+            logger.debug("Could not check if loaded model is PeftModel.")
 
-        logger.info(f"Model '{model_config.model_name_or_path}' initialized successfully on device '{model.device}'.")
+        logger.info(
+            f"Model '{model_config.model_name_or_path}' initialized successfully on device '{model.device}'."
+        )
         # Log parameter dtype if possible
         try:
             param_dtype = next(model.parameters()).dtype
             logger.info(f"Data type of first model parameter after load: {param_dtype}")
-        except Exception: pass # Ignore if model has no parameters or inspection fails
+        except Exception:
+            pass  # Ignore if model has no parameters or inspection fails
 
         return model
 
-    except OSError as e: # Catch specific file/repo not found errors
-        logger.error(f"Failed to load model '{model_config.model_name_or_path}'. Check path/name and network. Error: {e}", exc_info=True)
+    except OSError as e:  # Catch specific file/repo not found errors
+        logger.error(
+            f"Failed to load model '{model_config.model_name_or_path}'. Check path/name and network. Error: {e}",
+            exc_info=True,
+        )
         raise ModelError(f"Failed to load model: {e}") from e
     # --- FIX: Add generic exception handler ---
     except Exception as e:
-        logger.error(f"Unexpected error initializing model '{model_config.model_name_or_path}': {e}", exc_info=True)
+        logger.error(
+            f"Unexpected error initializing model '{model_config.model_name_or_path}': {e}",
+            exc_info=True,
+        )
         raise ModelError(f"Model initialization failed: {e}") from e
     # --- END FIX ---
-
