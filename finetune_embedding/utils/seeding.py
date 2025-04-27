@@ -1,10 +1,12 @@
 # finetune_embedding/utils/seeding.py
+import logging
 import random
+
 import numpy as np
 import torch
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 def set_seed(seed: int) -> None:
     """
