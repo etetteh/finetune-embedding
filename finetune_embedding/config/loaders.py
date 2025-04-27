@@ -3,9 +3,10 @@ import argparse
 import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 # Use absolute imports within the package
 from finetune_embedding.config.settings import (
@@ -451,29 +452,36 @@ def _structure_config_dict(flat_config: Dict[str, Any]) -> Dict[str, Any]:
     return structured
 
 
-def load_and_validate_config() -> AppSettings:
-    """
-    Parses CLI arguments, loads optional config file and .env, validates,
-    and returns the final AppSettings object.
-    """
-    load_dotenv()
-    logger.info(".env file loaded if found.")
+# --- Refactored Helper Functions ---
 
-    parser = _create_arg_parser()
+
+def _parse_initial_args(
+    parser: argparse.ArgumentParser,
+) -> Tuple[Optional[str], List[str]]:
+    """Parses known args to find config_file and return remaining args."""
     temp_args, remaining_argv = parser.parse_known_args()
+    return temp_args.config_file, remaining_argv
 
-    config_from_file = {}
-    if temp_args.config_file:
-        try:
-            config_from_file = _load_config_from_file(temp_args.config_file)
-        except (FileNotFoundError, ConfigurationError) as e:
-            # Use parser.error to exit gracefully with help message
-            parser.error(str(e))
 
-    # Get defaults from parser definition
+def _load_config_file_if_present(
+    config_file_path: Optional[str], parser: argparse.ArgumentParser
+) -> Dict[str, Any]:
+    """Loads config from file if path is provided, handling errors."""
+    if not config_file_path:
+        return {}
+    try:
+        return _load_config_from_file(config_file_path)
+    except (FileNotFoundError, ConfigurationError) as e:
+        # Use parser.error to exit gracefully with help message
+        parser.error(str(e))
+        return {}  # Should not be reached due to parser.error
+
+
+def _apply_config_file_to_defaults(
+    config_from_file: Dict[str, Any], parser: argparse.ArgumentParser
+) -> Dict[str, Any]:
+    """Overrides parser defaults with values from the config file."""
     defaults = {action.dest: action.default for action in parser._actions}
-
-    # Override defaults with config file values
     for key, value in config_from_file.items():
         mapped_key = key  # Start with the key from the file
         # Add mappings if config file uses different names than args
@@ -490,70 +498,132 @@ def load_and_validate_config() -> AppSettings:
             logger.warning(
                 f"Key '{key}' from config file not found as a valid argument or mapping, ignoring."
             )
+    return defaults
 
+
+def _parse_final_args(
+    parser: argparse.ArgumentParser,
+    defaults: Dict[str, Any],
+    remaining_argv: List[str],
+) -> Dict[str, Any]:
+    """Parses remaining CLI args, applying updated defaults."""
     parser.set_defaults(**defaults)
-    args = parser.parse_args(
-        remaining_argv
-    )  # CLI args override config file/defaults here
-    final_config_dict = vars(args)
+    args = parser.parse_args(remaining_argv)
+    return vars(args)
 
-    # --- Structure and Pydantic Validation ---
+
+def _validate_with_pydantic(structured_config: Dict[str, Any]) -> AppSettings:
+    """Validates the structured config using the AppSettings Pydantic model."""
     try:
-        structured_config = _structure_config_dict(final_config_dict)
-        logger.debug(f"Structured config for Pydantic: {structured_config}")
-
         # Ensure required top-level keys exist before passing to Pydantic
-        if "model" not in structured_config:
-            structured_config["model"] = {}
-        if "dataset" not in structured_config:
-            structured_config["dataset"] = {}
-        if "training" not in structured_config:
-            structured_config["training"] = {}
+        # (Pydantic v2 might handle missing dicts better, but this is safer)
+        structured_config.setdefault("model", {})
+        structured_config.setdefault("dataset", {})
+        structured_config.setdefault("training", {})
 
         app_settings = AppSettings(**structured_config)
         logger.info("Configuration parsed and validated successfully by Pydantic.")
-
-        # --- Post-Pydantic Validation (Cross-field checks) ---
-        # These checks are now redundant if Pydantic models have required fields marked (...)
-        # but can be kept for extra safety or more complex cross-field logic.
-        if not app_settings.model.model_name_or_path:
-            raise ConfigurationError("--model_name_or_path is required.")
-        if not app_settings.training.output_dir:
-            raise ConfigurationError("--output_dir is required.")
-        if not app_settings.dataset.dataset_format:
-            raise ConfigurationError("--dataset_format is required.")
-
-        # Dataset source validation
-        ds_cfg = app_settings.dataset
-        has_hub_source = bool(
-            ds_cfg.dataset_name
-            and not ds_cfg.file_format
-            and not ds_cfg.data_files
-            and not ds_cfg.data_dir
+        return app_settings
+    except ValidationError as e:
+        logger.error(f"Pydantic validation failed: {e}", exc_info=False)
+        # Provide a cleaner error message
+        error_details = "\n".join(
+            [f"  - {err['loc']}: {err['msg']}" for err in e.errors()]
         )
-        has_local_source = bool(
-            ds_cfg.file_format and (ds_cfg.data_files or ds_cfg.data_dir)
+        raise ConfigurationError(
+            f"Configuration validation failed:\n{error_details}"
+        ) from e
+
+
+def _perform_post_validation(app_settings: AppSettings):
+    """Performs additional validation checks after Pydantic validation."""
+    # Basic required field checks (redundant if Pydantic models are strict)
+    if not app_settings.model.model_name_or_path:
+        raise ConfigurationError("--model_name_or_path is required.")
+    if not app_settings.training.output_dir:
+        raise ConfigurationError("--output_dir is required.")
+    if not app_settings.dataset.dataset_format:
+        raise ConfigurationError("--dataset_format is required.")
+
+    # Dataset source validation
+    ds_cfg = app_settings.dataset
+    has_hub_source = bool(
+        ds_cfg.dataset_name
+        and not ds_cfg.file_format
+        and not ds_cfg.data_files
+        and not ds_cfg.data_dir
+    )
+    has_local_source = bool(
+        ds_cfg.file_format and (ds_cfg.data_files or ds_cfg.data_dir)
+    )
+    # Allows specifying dataset_name like 'csv' with local files
+    has_local_hub_name_source = bool(
+        ds_cfg.dataset_name
+        and not ds_cfg.file_format
+        and (ds_cfg.data_files or ds_cfg.data_dir)
+    )
+
+    if not (has_hub_source or has_local_source or has_local_hub_name_source):
+        raise ConfigurationError(
+            "Must provide dataset source: either --dataset_name (Hub) OR "
+            "--file_format and (--data_files or --data_dir) (local) OR "
+            "--dataset_name (as format type) and (--data_files or --data_dir)."
         )
-        has_local_hub_name_source = bool(
-            ds_cfg.dataset_name
-            and not ds_cfg.file_format
-            and (ds_cfg.data_files or ds_cfg.data_dir)
-        )
 
-        if not (has_hub_source or has_local_source or has_local_hub_name_source):
-            raise ConfigurationError(
-                "Must provide dataset source: either --dataset_name (Hub) OR --file_format and (--data_files or --data_dir) (local) OR --dataset_name (as format type) and (--data_files or --data_dir)."
-            )
+    # Normalize 'report_to' if 'none' is included
+    if app_settings.training.report_to and "none" in app_settings.training.report_to:
+        app_settings.training.report_to = None  # Standard way to disable reporting
 
-        if (
-            app_settings.training.report_to
-            and "none" in app_settings.training.report_to
-        ):
-            app_settings.training.report_to = None  # Standard way to disable reporting
+    logger.info("Post-Pydantic configuration validation passed.")
 
-        logger.info("Post-Pydantic configuration validation passed.")
+
+# --- Main Refactored Function ---
+
+
+def load_and_validate_config() -> AppSettings:
+    """
+    Parses CLI arguments, loads optional config file and .env, validates,
+    and returns the final AppSettings object. Orchestrates helper functions.
+    """
+    try:
+        load_dotenv()
+        logger.info(".env file loaded if found.")
+
+        parser = _create_arg_parser()
+
+        # 1. Parse initial args to find config file
+        config_file_path, remaining_argv = _parse_initial_args(parser)
+
+        # 2. Load config from file if specified
+        config_from_file = _load_config_file_if_present(config_file_path, parser)
+
+        # 3. Apply config file values to parser defaults
+        updated_defaults = _apply_config_file_to_defaults(config_from_file, parser)
+
+        # 4. Parse final args (CLI overrides config file/defaults)
+        final_flat_config = _parse_final_args(parser, updated_defaults, remaining_argv)
+
+        # 5. Structure the flat config for Pydantic
+        structured_config = _structure_config_dict(final_flat_config)
+        logger.debug(f"Structured config for Pydantic: {structured_config}")
+
+        # 6. Validate with Pydantic
+        app_settings = _validate_with_pydantic(structured_config)
+
+        # 7. Perform post-Pydantic validation
+        _perform_post_validation(app_settings)
+
         return app_settings
 
-    except Exception as e:  # Catch Pydantic validation errors or others
-        logger.error(f"Configuration loading/validation failed: {e}", exc_info=True)
-        raise ConfigurationError(f"Configuration validation failed: {e}") from e
+    except Exception as e:
+        # Catch any unexpected errors during the process
+        if not isinstance(e, ConfigurationError):
+            logger.error(
+                f"Unexpected error during configuration loading: {e}", exc_info=True
+            )
+            raise ConfigurationError(
+                f"Unexpected error during configuration loading: {e}"
+            ) from e
+        else:
+            # Re-raise known configuration errors
+            raise e
