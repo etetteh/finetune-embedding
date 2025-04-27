@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"] # Test against multiple Python versions
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"] # Test against multiple Python versions
 
     steps:
     - name: Checkout code
@@ -40,20 +40,11 @@ jobs:
           echo "Warning: No pyproject.toml or requirements.txt found. Skipping dependency installation."
         fi
 
-    - name: Lint with flake8
+    - name: Lint and Format Check with Ruff
       run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
-
-    - name: Format check with black
-      run: |
-        black --check .
-
-    - name: Import sort check with isort
-      run: |
-        isort --check-only .
+        # Check linting rules (including complexity C90) and formatting
+        ruff check . --statistics
+        ruff format --check .
 
     - name: Type check with mypy
       run: |
