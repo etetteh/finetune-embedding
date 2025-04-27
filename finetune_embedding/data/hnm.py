@@ -1,7 +1,9 @@
 # finetune_embedding/data/hnm.py
 import logging
-from typing import Tuple
+from typing import Any, Dict, Optional, Tuple
 
+# Import Dataset type hint if not already present
+from datasets import Dataset
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import mine_hard_negatives
 
@@ -20,12 +22,50 @@ from .preprocessing import get_expected_columns
 logger = logging.getLogger(__name__)
 
 
+def _mine_single_split(
+    dataset: Optional[Dataset],
+    hnm_args: Dict[str, Any],
+    split_name: str,
+) -> Optional[Dataset]:
+    """Mines hard negatives for a single dataset split."""
+    if not dataset or len(dataset) == 0:
+        logger.info(
+            f"No {split_name} set provided or empty, skipping HNM for {split_name}."
+        )
+        return None
+
+    logger.info(f"Mining hard negatives for {split_name} set...")
+    original_len = len(dataset)
+    try:
+        mined_dataset = mine_hard_negatives(dataset=dataset, **hnm_args)
+        mined_len = len(mined_dataset)
+        logger.info(
+            f"{split_name.capitalize()} set after HNM: {mined_len} triplets (from {original_len} pairs)."
+        )
+
+        if mined_len == 0:
+            logger.warning(
+                f"Hard Negative Mining resulted in an empty {split_name} set. Setting to None."
+            )
+            return None
+        return mined_dataset
+
+    except Exception as e:
+        # Catching exception here allows processing other splits if one fails,
+        # but it might be better to let it propagate up if any failure is critical.
+        # For now, log and return None for this split.
+        logger.error(
+            f"Failed to mine hard negatives for {split_name} set: {e}", exc_info=True
+        )
+        return None
+
+
 def apply_hard_negative_mining(
     datasets: DatasetContainer,
     model: SentenceTransformer,
     hnm_config: HNMConfig,
     train_batch_size: int,
-    dataset_config: DatasetConfig,  # Pass dataset config for column names
+    dataset_config: DatasetConfig,
 ) -> Tuple[DatasetContainer, str]:
     """
     Applies Hard Negative Mining to train, eval, and test datasets if they exist.
@@ -33,6 +73,7 @@ def apply_hard_negative_mining(
     """
     logger.info("Applying Hard Negative Mining...")
 
+    # --- Initial Checks ---
     if dataset_config.dataset_format != "pair":
         logger.warning(
             f"Attempted HNM but initial format is '{dataset_config.dataset_format}', not 'pair'. Skipping."
@@ -46,6 +87,7 @@ def apply_hard_negative_mining(
             "Training data must be loaded before Hard Negative Mining."
         )
 
+    # --- Prepare HNM Arguments ---
     try:
         initial_pair_columns = get_expected_columns("pair")
         anchor_col = initial_pair_columns["sentence1"]
@@ -75,54 +117,27 @@ def apply_hard_negative_mining(
         f"HNM arguments: { {k: v for k, v in hnm_args.items() if k != 'model'} }"
     )
 
-    new_datasets = DatasetContainer()
-
+    # --- Mine Each Split ---
     try:
-        logger.info("Mining hard negatives for training set...")
-        original_len = len(datasets.train_dataset)
-        new_datasets.train_dataset = mine_hard_negatives(
-            dataset=datasets.train_dataset, **hnm_args
+        mined_train_dataset = _mine_single_split(
+            datasets.train_dataset, hnm_args, "training"
         )
-        mined_len = len(new_datasets.train_dataset)
-        logger.info(
-            f"Training set after HNM: {mined_len} triplets (from {original_len} pairs)."
-        )
-        if mined_len == 0:
+        # Training set is critical, raise error if mining failed or resulted in empty set
+        if mined_train_dataset is None:
             raise DataLoadingError(
-                "Hard Negative Mining resulted in an empty training set."
+                "Hard Negative Mining failed or resulted in an empty training set."
             )
 
-        if datasets.eval_dataset and len(datasets.eval_dataset) > 0:
-            logger.info("Mining hard negatives for evaluation set...")
-            original_len = len(datasets.eval_dataset)
-            new_datasets.eval_dataset = mine_hard_negatives(
-                dataset=datasets.eval_dataset, **hnm_args
-            )
-            mined_len = len(new_datasets.eval_dataset)
-            logger.info(
-                f"Evaluation set after HNM: {mined_len} triplets (from {original_len} pairs)."
-            )
-            if mined_len == 0:
-                new_datasets.eval_dataset = None
-        else:
-            logger.info("No evaluation set provided or empty, skipping HNM for eval.")
-            new_datasets.eval_dataset = None
+        mined_eval_dataset = _mine_single_split(
+            datasets.eval_dataset, hnm_args, "evaluation"
+        )
+        mined_test_dataset = _mine_single_split(datasets.test_dataset, hnm_args, "test")
 
-        if datasets.test_dataset and len(datasets.test_dataset) > 0:
-            logger.info("Mining hard negatives for test set...")
-            original_len = len(datasets.test_dataset)
-            new_datasets.test_dataset = mine_hard_negatives(
-                dataset=datasets.test_dataset, **hnm_args
-            )
-            mined_len = len(new_datasets.test_dataset)
-            logger.info(
-                f"Test set after HNM: {mined_len} triplets (from {original_len} pairs)."
-            )
-            if mined_len == 0:
-                new_datasets.test_dataset = None
-        else:
-            logger.info("No test set provided or empty, skipping HNM for test.")
-            new_datasets.test_dataset = None
+        new_datasets = DatasetContainer(
+            train=mined_train_dataset,
+            eval_dataset=mined_eval_dataset,
+            test=mined_test_dataset,
+        )
 
         effective_format = "triplet"
         logger.info(
@@ -130,6 +145,10 @@ def apply_hard_negative_mining(
         )
         return new_datasets, effective_format
 
+    except DataLoadingError:
+        # Re-raise critical error for training set
+        raise
     except Exception as e:
-        logger.error(f"Hard negative mining failed: {e}", exc_info=True)
-        raise FineTuningError("Hard Negative Mining failed.") from e
+        # Catch any other unexpected errors during the overall process
+        logger.error(f"Hard negative mining process failed: {e}", exc_info=True)
+        raise FineTuningError("Hard Negative Mining process failed.") from e
