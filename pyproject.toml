@@ -7,11 +7,11 @@ build-backend = "setuptools.build_meta"
 name = "finetune-embedding"
 version = "0.1.0" # Or your desired version
 authors = [
-  { name="Your Name", email="your.email@example.com" },
+  { name="Enoch Tetteh", email="your.email@example.com" },
 ]
 description = "A package for fine-tuning sentence embedding models."
 readme = "README.md"
-requires-python = ">=3.9" # Match your supported versions
+requires-python = ">=3.12" # Match your supported versions
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License", # Match your license
@@ -35,32 +35,52 @@ dev = [
     "pytest",
     "pytest-mock",
     "pytest-cov",
-    "flake8",
-    "black",
-    "isort",
     "mypy",
+    "ruff",
     # Add others like pre-commit, types-* if needed
 ]
 
 [project.scripts]
 # If you want a command-line script generated upon installation
-# finetune-embedding = "finetune_embedding.main:main"
+finetune-embedding = "finetune_embedding.main:main"
 
 [project.urls]
 "Homepage" = "https://github.com/etetteh/finetune-embedding" # Update URL if needed
 "Bug Tracker" = "https://github.com/etetteh/finetune-embedding/issues" # Update URL if needed
 
-# Optional: Tool-specific configurations (like black, isort, mypy, pytest)
-# can also go here.
-# [tool.black]
-# line-length = 88
-#
-# [tool.isort]
-# profile = "black"
-#
-# [tool.mypy]
-# ignore_missing_imports = true
-# # Add other mypy settings
-#
-# [tool.pytest.ini_options]
-# # Add pytest settings
+[tool.ruff]
+# Match black's default line length
+line-length = 88
+# Specify Python versions targeted for compatibility checks
+target-version = "py312"
+
+# Define directories/files to exclude from checks
+exclude = [
+    ".bzr", ".direnv", ".eggs", ".git", ".hg", ".mypy_cache", ".nox",
+    ".pants.d", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv",
+    "__pypackages__", "_build", "buck-out", "build", "dist",
+    "node_modules", "venv",
+]
+
+[tool.ruff.lint]
+# Select rule sets:
+# E/W: pycodestyle errors/warnings
+# F: Pyflakes (undefined names, unused imports/variables)
+# I: isort (import sorting)
+# C90: McCabe complexity
+# B: flake8-bugbear (potential logic errors/style issues)
+# A: flake8-builtins (shadowing builtins)
+# Add more rule codes/prefixes as desired!
+select = ["E", "F", "W", "I", "C90", "B", "A"]
+
+# You might ignore specific rules if necessary, but try to fix them first.
+ignore = ["E501"] # Example: Ignore line length if handled ONLY by formatter
+# For complexity, ruff uses C901. Default threshold is 10.
+# You can adjust if needed, but refactoring is better.
+# mccabe.max-complexity = 15
+
+[tool.ruff.format]
+# Configuration for the formatter (ruff format)
+# Defaults are compatible with Black, usually no changes needed.
+# quote-style = "double" # Example: Enforce double quotes
+# indent-style = "space" # Example: Enforce spaces for indentation
