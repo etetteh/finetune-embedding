@@ -2,6 +2,7 @@
 import argparse
 import json
 from pathlib import Path
+from typing import Any, Dict
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +15,73 @@ from sentence_transformers.trainer import (
     SentenceTransformerTrainer,
     SentenceTransformerTrainingArguments,
 )
+
+# --- Helper Functions for mock_args_namespace ---
+
+
+def _flatten_nested_config(
+    nested_dict: Dict[str, Any], parent_key: str = "", sep: str = "_"
+) -> Dict[str, Any]:
+    """Flattens a nested dictionary, adding prefixes for specific sections."""
+    items: Dict[str, Any] = {}
+    for k, v in nested_dict.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        prefix = ""
+        # Apply prefixes based on the top-level section key (parent_key)
+        if parent_key == "hnm":
+            prefix = "hnm_"
+        elif parent_key == "lora":
+            prefix = "lora_"
+
+        # Construct the final key name for the flat dictionary
+        flat_key = f"{prefix}{k}"
+
+        if isinstance(v, dict):
+            # Recursively flatten sub-dictionaries, passing the current key as parent
+            items.update(_flatten_nested_config(v, new_key, sep=sep))
+        elif isinstance(v, list):
+            # Handle list args directly
+            items[flat_key] = v
+        elif v is not None:
+            # Add non-None scalar values
+            items[flat_key] = v
+        # We intentionally skip adding keys with None values here,
+        # they will be handled by parser defaults later if needed.
+
+    return items
+
+
+def _add_explicit_boolean_flags(
+    flat_args: Dict[str, Any], full_config_dict: Dict[str, Any]
+):
+    """Adds boolean flags explicitly based on the full config, handling defaults."""
+    flat_args["trust_remote_code"] = full_config_dict.get("model", {}).get(
+        "trust_remote_code", False
+    )
+    flat_args["hnm_use_faiss"] = full_config_dict.get("hnm", {}).get("use_faiss", False)
+    flat_args["use_lora"] = full_config_dict.get("lora", {}).get("use_lora", False)
+    # Note: dataloader_pin_memory defaults to True in the parser
+    flat_args["dataloader_pin_memory"] = full_config_dict.get("training", {}).get(
+        "dataloader_pin_memory", True
+    )
+    flat_args["use_fp16"] = full_config_dict.get("training", {}).get("use_fp16", False)
+    flat_args["use_bf16"] = full_config_dict.get("training", {}).get("use_bf16", False)
+    flat_args["torch_compile"] = full_config_dict.get("training", {}).get(
+        "torch_compile", False
+    )
+
+
+def _ensure_all_parser_args_present(
+    flat_args: Dict[str, Any], parser: argparse.ArgumentParser
+):
+    """Ensures all arguments defined in the parser exist in flat_args, adding defaults if missing."""
+    for action in parser._actions:
+        dest_name = action.dest
+        if dest_name not in flat_args:
+            # Only add if truly missing, respect None if explicitly set previously
+            # (though _flatten_nested_config currently skips None)
+            flat_args[dest_name] = action.default
+
 
 # --- Basic Fixtures ---
 
@@ -118,72 +186,30 @@ def full_app_settings(full_config_dict: dict):
 
 @pytest.fixture
 def mock_args_namespace(full_config_dict: dict) -> argparse.Namespace:
-    """Creates a mock argparse.Namespace similar to parsed args."""
-    # Flatten the dict for argparse structure
-    flat_args = {}
+    """Creates a mock argparse.Namespace similar to parsed args by flattening the config."""
+    flat_args: Dict[str, Any] = {}
+
+    # 1. Add top-level args explicitly
     flat_args["config_file"] = None
     flat_args["log_level"] = full_config_dict.get("log_level", "INFO")
     flat_args["log_file"] = full_config_dict.get("log_file")
 
+    # 2. Flatten nested sections (model, dataset, training, hnm, lora)
     for section, section_cfg in full_config_dict.items():
         if isinstance(section_cfg, dict):
-            prefix = ""
-            if section == "hnm":
-                prefix = "hnm_"
-            if section == "lora":
-                prefix = "lora_"
-            for key, value in section_cfg.items():
-                # Handle list args for argparse (nargs='*')
-                if isinstance(value, list):
-                    flat_args[f"{prefix}{key}"] = value
-                elif (
-                    value is not None
-                ):  # Avoid adding None values unless explicitly needed
-                    flat_args[f"{prefix}{key}"] = value
+            # Pass the section name to handle prefixes correctly inside the helper
+            flat_args.update(_flatten_nested_config(section_cfg, parent_key=section))
 
-    # Add boolean flags based on dict values (ensure they exist)
-    flat_args["trust_remote_code"] = full_config_dict.get("model", {}).get(
-        "trust_remote_code", False
-    )
-    flat_args["hnm_use_faiss"] = full_config_dict.get("hnm", {}).get("use_faiss", False)
-    flat_args["use_lora"] = full_config_dict.get("lora", {}).get("use_lora", False)
-    flat_args["dataloader_pin_memory"] = full_config_dict.get("training", {}).get(
-        "dataloader_pin_memory", True
-    )
-    flat_args["use_fp16"] = full_config_dict.get("training", {}).get("use_fp16", False)
-    flat_args["use_bf16"] = full_config_dict.get("training", {}).get("use_bf16", False)
-    flat_args["torch_compile"] = full_config_dict.get("training", {}).get(
-        "torch_compile", False
-    )
+    # 3. Add boolean flags explicitly
+    _add_explicit_boolean_flags(flat_args, full_config_dict)
 
-    # Ensure all keys expected by the parser exist, even if None
+    # 4. Ensure all parser arguments exist, adding defaults if needed
     from finetune_embedding.config.loaders import _create_arg_parser
 
     parser = _create_arg_parser()
-    for action in parser._actions:
-        dest_name = action.dest
-        # Handle potential conflicts with nested structure (e.g., output_dir in training)
-        # This logic might need refinement if arg names clash significantly with nested keys
-        if dest_name not in flat_args:
-            # Check if it might be nested
-            found_nested = False
-            for section in ["model", "dataset", "training", "hnm", "lora"]:
-                prefix = ""
-                if section == "hnm":
-                    prefix = "hnm_"
-                if section == "lora":
-                    prefix = "lora_"
-                if dest_name.startswith(prefix) and dest_name[
-                    len(prefix) :
-                ] in full_config_dict.get(section, {}):
-                    found_nested = True
-                    break
-                elif not prefix and dest_name in full_config_dict.get(section, {}):
-                    found_nested = True
-                    break
-            if not found_nested:
-                flat_args[dest_name] = action.default
+    _ensure_all_parser_args_present(flat_args, parser)
 
+    # 5. Create the Namespace
     return argparse.Namespace(**flat_args)
 
 
