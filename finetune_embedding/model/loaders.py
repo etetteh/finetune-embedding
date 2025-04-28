@@ -1,5 +1,6 @@
 # finetune_embedding/model/loaders.py
 import logging
+from pathlib import Path
 
 import torch
 from peft import PeftModel  # Assuming PeftModel might be used
@@ -40,11 +41,16 @@ def initialize_model(
     )
 
     try:
+        cache_folder_str = (
+            str(model_config.cache_dir)
+            if isinstance(model_config.cache_dir, Path)
+            else model_config.cache_dir
+        )
         model = SentenceTransformer(
             model_name_or_path=model_config.model_name_or_path,
             model_card_data=model_card_data,
             trust_remote_code=model_config.trust_remote_code,
-            cache_folder=model_config.cache_dir,
+            cache_folder=cache_folder_str,
             model_kwargs=model_kwargs,
             device=str(device),
         )
