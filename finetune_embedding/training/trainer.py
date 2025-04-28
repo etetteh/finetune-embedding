@@ -3,7 +3,8 @@ import logging
 import os
 from typing import Optional
 
-from datasets import Dataset
+import torch.nn as nn
+from datasets import Dataset  # type: ignore[import-untyped]
 from sentence_transformers import (
     SentenceTransformer,
     SentenceTransformerTrainer,
@@ -35,7 +36,7 @@ class TrainingWrapper:
     def __init__(
         self,
         model: SentenceTransformer,
-        loss: object,  # Loss function instance
+        loss: Optional[nn.Module],
         train_dataset: Dataset,
         training_args_config: TrainingConfig,
         eval_dataset: Optional[Dataset] = None,
@@ -133,12 +134,12 @@ class TrainingWrapper:
             if effective_eval_strategy == "steps"
             else None,
             save_strategy=self.training_args_config.save_strategy,
-            save_steps=self.training_args_config.save_steps
+            save_steps=self.training_args_config.save_steps  # type: ignore[arg-type]
             if self.training_args_config.save_strategy == "steps"
             else None,
             save_total_limit=self.training_args_config.save_limit,
             logging_strategy=self.training_args_config.logging_strategy,
-            logging_steps=self.training_args_config.logging_steps
+            logging_steps=self.training_args_config.logging_steps  # type: ignore[arg-type]
             if self.training_args_config.logging_strategy == "steps"
             else None,
             dataloader_num_workers=self.training_args_config.dataloader_num_workers,
@@ -186,7 +187,7 @@ class TrainingWrapper:
 
         logger.info(f"Starting model training on device: {self.trainer.args.device}")
         try:
-            train_result = self.trainer.train()
+            train_result = self.trainer.train()  # type: ignore[attr-defined]
             logger.info("Training finished.")
             logger.debug(f"Train Result: {train_result}")
 
@@ -214,7 +215,7 @@ class TrainingWrapper:
         logger.info(f"Saving final model state from trainer to {final_save_path}...")
         try:
             # Use trainer's save_model, which handles PEFT adapters correctly
-            self.trainer.save_model(final_save_path)
+            self.trainer.save_model(final_save_path)  # type: ignore[attr-defined]
             logger.info(f"Final model saved to {final_save_path}")
             return final_save_path
         except Exception as e:
