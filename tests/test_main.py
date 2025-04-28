@@ -27,7 +27,7 @@ def test_main_success_path(
 
     mock_load_config.assert_called_once()
     mock_setup_logging.assert_called_once_with(
-        basic_app_settings.log_level, basic_app_settings.log_file
+        log_level_str=basic_app_settings.log_level, log_file=basic_app_settings.log_file
     )
     mock_service_cls.assert_called_once_with(basic_app_settings)
     mock_service_instance.run_pipeline.assert_called_once()
