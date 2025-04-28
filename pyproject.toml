@@ -7,37 +7,45 @@ build-backend = "setuptools.build_meta"
 name = "finetune-embedding"
 version = "0.1.0" # Or your desired version
 authors = [
-  { name="Enoch Tetteh", email="your.email@example.com" },
+  { name="Enoch Tetteh", email="your.email@example.com" }, # Replace if desired
 ]
 description = "A package for fine-tuning sentence embedding models."
 readme = "README.md"
-requires-python = ">=3.12" # Match your supported versions
+requires-python = ">=3.9" # Keep this compatible with your CI
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License", # Match your license
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    # List your core dependencies here, e.g.:
-    "sentence-transformers>=2.7.0", # Use appropriate version constraints
-    "torch>=2.0.0",
-    "datasets>=2.10.0",
-    "pydantic>=2.0.0",
-    "peft>=0.8.0", # If using LoRA
-    "python-dotenv>=1.0.0",
-    "numpy",
-    # Add other core libraries like accelerate, transformers, etc.
+    # Core libraries needed to RUN the fine-tuning
+    "sentence-transformers>=4.1.0", # From freeze
+    "torch>=2.2.2",                 # From freeze
+    "datasets>=3.5.0",              # From freeze
+    "transformers>=4.51.3",         # From freeze (often needed)
+    "accelerate>=1.6.0",            # From freeze (often needed for training/peft)
+    "pydantic>=2.11.3",             # From freeze
+    "peft>=0.15.2",                 # From freeze (if using LoRA)
+    "python-dotenv>=1.1.0",         # From freeze
+    "numpy>=1.26.4",                # From freeze (often implicitly required)
+    "PyYAML>=6.0.2",                # From freeze (for config loading if using YAML)
+    "scikit-learn>=1.6.1",          # From freeze (if used for metrics/evaluation)
+    "faiss-cpu>=1.10.0",            # From freeze (if using FAISS for HNM)
+    # Add any other essential runtime libraries based on your direct imports
 ]
 
 [project.optional-dependencies]
 dev = [
-    # List development/testing dependencies here, e.g.:
-    "pytest",
-    "pytest-mock",
-    "pytest-cov",
-    "mypy",
-    "ruff",
-    # Add others like pre-commit, types-* if needed
+    # Libraries needed for DEVELOPMENT (testing, linting, etc.)
+    "pytest>=8.3.5",
+    "pytest-mock>=3.14.0",
+    "pytest-cov>=4.0", # Keep from previous version
+    "mypy>=1.0",       # Keep from previous version
+    "ruff>=0.11.7",
+    "wandb>=0.19.10",  # For optional experiment tracking
+    "hypothesis>=6.131.8",
+    # Add 'types-*' packages if mypy complains about missing stubs
+    # e.g., "types-PyYAML"
 ]
 
 [project.scripts]
@@ -45,14 +53,14 @@ dev = [
 finetune-embedding = "finetune_embedding.main:main"
 
 [project.urls]
-"Homepage" = "https://github.com/etetteh/finetune-embedding" # Update URL if needed
-"Bug Tracker" = "https://github.com/etetteh/finetune-embedding/issues" # Update URL if needed
+"Homepage" = "https://github.com/etetteh/finetune-embedding"
+"Bug Tracker" = "https://github.com/etetteh/finetune-embedding/issues"
 
 [tool.ruff]
 # Match black's default line length
 line-length = 88
 # Specify Python versions targeted for compatibility checks
-target-version = "py312"
+target-version = "py39" # Match requires-python minimum
 
 # Define directories/files to exclude from checks
 exclude = [
@@ -63,24 +71,12 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-# Select rule sets:
-# E/W: pycodestyle errors/warnings
-# F: Pyflakes (undefined names, unused imports/variables)
-# I: isort (import sorting)
-# C90: McCabe complexity
-# B: flake8-bugbear (potential logic errors/style issues)
-# A: flake8-builtins (shadowing builtins)
-# Add more rule codes/prefixes as desired!
+# Select rule sets: E/W (pycodestyle), F (Pyflakes), I (isort), C90 (complexity), B (bugbear), A (builtins)
 select = ["E", "F", "W", "I", "C90", "B", "A"]
-
-# You might ignore specific rules if necessary, but try to fix them first.
-ignore = ["E501"] # Example: Ignore line length if handled ONLY by formatter
-# For complexity, ruff uses C901. Default threshold is 10.
-# You can adjust if needed, but refactoring is better.
+# Ignore line length (E501) as ruff format handles it
+ignore = ["E501"]
+# Consider adjusting complexity threshold if needed, but refactoring is preferred
 # mccabe.max-complexity = 15
 
 [tool.ruff.format]
-# Configuration for the formatter (ruff format)
-# Defaults are compatible with Black, usually no changes needed.
-# quote-style = "double" # Example: Enforce double quotes
-# indent-style = "space" # Example: Enforce spaces for indentation
+# Defaults are compatible with Black
