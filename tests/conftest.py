@@ -55,20 +55,23 @@ def _add_explicit_boolean_flags(
     flat_args: Dict[str, Any], full_config_dict: Dict[str, Any]
 ):
     """Adds boolean flags explicitly based on the full config, handling defaults."""
-    flat_args["trust_remote_code"] = full_config_dict.get("model", {}).get(
-        "trust_remote_code", False
+
+    # Helper to safely get nested values, returning default if section is None or key missing
+    def safe_get(section_name: str, key_name: str, default_value: bool) -> bool:
+        section = full_config_dict.get(section_name)  # Get section, might be None
+        if isinstance(section, dict):  # Check if it's a dictionary
+            return section.get(key_name, default_value)
+        return default_value  # Return default if section is None or not a dict
+
+    flat_args["trust_remote_code"] = safe_get("model", "trust_remote_code", False)
+    flat_args["hnm_use_faiss"] = safe_get("hnm", "use_faiss", False)
+    flat_args["use_lora"] = safe_get("lora", "use_lora", False)
+    flat_args["dataloader_pin_memory"] = safe_get(
+        "training", "dataloader_pin_memory", True
     )
-    flat_args["hnm_use_faiss"] = full_config_dict.get("hnm", {}).get("use_faiss", False)
-    flat_args["use_lora"] = full_config_dict.get("lora", {}).get("use_lora", False)
-    # Note: dataloader_pin_memory defaults to True in the parser
-    flat_args["dataloader_pin_memory"] = full_config_dict.get("training", {}).get(
-        "dataloader_pin_memory", True
-    )
-    flat_args["use_fp16"] = full_config_dict.get("training", {}).get("use_fp16", False)
-    flat_args["use_bf16"] = full_config_dict.get("training", {}).get("use_bf16", False)
-    flat_args["torch_compile"] = full_config_dict.get("training", {}).get(
-        "torch_compile", False
-    )
+    flat_args["use_fp16"] = safe_get("training", "use_fp16", False)
+    flat_args["use_bf16"] = safe_get("training", "use_bf16", False)
+    flat_args["torch_compile"] = safe_get("training", "torch_compile", False)
 
 
 def _ensure_all_parser_args_present(
