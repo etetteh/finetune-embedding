@@ -1,6 +1,7 @@
 # finetune_embedding/main.py
 import logging
 import sys
+from pathlib import Path
 
 # Setup basic logging BEFORE loading config to catch config errors
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -38,7 +39,17 @@ def main() -> int:
         settings = load_and_validate_config()
 
         # Setup logging based on validated config (replaces basicConfig)
-        setup_logging(settings.log_level, settings.log_file)
+        log_file_str = (
+            str(settings.log_file)
+            if isinstance(settings.log_file, Path)
+            else settings.log_file
+        )
+        # Correct the keyword argument name here
+        setup_logging(
+            log_level_str=settings.log_level, log_file=log_file_str
+        )  # Use level_str
+
+        # setup_logging(settings.log_level, settings.log_file)
         app_logger = logging.getLogger("finetune_embedding")  # Get app's root logger
         app_logger.info("Logging reconfigured based on settings.")
 
