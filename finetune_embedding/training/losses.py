@@ -2,6 +2,7 @@
 import logging
 from typing import Any, Callable, Dict
 
+import torch.nn as nn  # Import torch.nn
 from sentence_transformers import SentenceTransformer, losses
 
 # Use absolute imports
@@ -9,8 +10,8 @@ from finetune_embedding.exceptions import ConfigurationError, ModelError
 
 logger = logging.getLogger(__name__)
 
-# Type alias for loss creation functions
-LossCreator = Callable[..., object]  # Using 'object' as base type for losses
+# Type alias for loss creation functions - Update return type
+LossCreator = Callable[..., nn.Module]
 
 
 def _create_mnrl_loss(
@@ -62,7 +63,7 @@ def create_loss_function(
     model: SentenceTransformer,
     effective_format: str,
     num_labels: int,  # Required for SoftmaxLoss
-) -> object:  # Return type depends on the specific loss class
+) -> nn.Module:  # Add return type hint nn.Module
     """Creates the appropriate loss function based on the effective dataset format using dispatch."""
     logger.info(f"Creating loss function for effective format '{effective_format}'.")
     if not model:
@@ -83,7 +84,9 @@ def create_loss_function(
             creator_args["num_labels"] = num_labels
 
         # Call the selected creator function
-        loss = creator_func(**creator_args)
+        loss: nn.Module = creator_func(
+            **creator_args
+        )  # Ensure loss is typed as nn.Module
 
         logger.info(f"Loss function created: {type(loss).__name__}")
         return loss
