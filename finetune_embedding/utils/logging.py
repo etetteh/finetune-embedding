@@ -1,8 +1,7 @@
 # finetune_embedding/utils/logging.py
 import logging
 import os
-import sys
-from typing import Optional  # Import Optional
+from typing import List, Optional  # Import Optional
 
 
 def setup_logging(log_level_str: str, log_file: Optional[str] = None) -> None:
@@ -10,16 +9,19 @@ def setup_logging(log_level_str: str, log_file: Optional[str] = None) -> None:
     Sets up logging configuration based on user settings.
     """
     numeric_level = getattr(logging, log_level_str.upper(), logging.INFO)
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    log_format = "%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
+    formatter = logging.Formatter(log_format)
 
-    handlers = [logging.StreamHandler(sys.stdout)]
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
     if log_file:
         try:
             log_dir = os.path.dirname(log_file)
             if log_dir:
                 os.makedirs(log_dir, exist_ok=True)
-            handlers.append(logging.FileHandler(log_file, mode="a"))
+            file_handler = logging.FileHandler(log_file, mode="a")  # Create FileHandler
+            file_handler.setFormatter(formatter)
+            handlers.append(file_handler)
         except OSError as e:
             # Use basicConfig logger temporarily if main logger setup fails
             logging.error(
