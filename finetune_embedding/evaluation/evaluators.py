@@ -2,7 +2,7 @@
 import logging
 from typing import Callable, Dict, Optional
 
-from datasets import Dataset
+from datasets import Dataset  # type: ignore[import-untyped]
 from sentence_transformers import evaluation
 
 from finetune_embedding.config.settings import DatasetConfig
@@ -189,9 +189,9 @@ def create_evaluator(
         if effective_format == "pair-class":
             evaluator = creator_func(
                 eval_dataset, cols, eval_name, eval_batch_size, name_prefix=name_prefix
-            )
+            )  # type: ignore[call-arg]
         else:
-            evaluator = creator_func(eval_dataset, cols, eval_name, eval_batch_size)
+            evaluator = creator_func(eval_dataset, cols, eval_name, eval_batch_size)  # type: ignore[call-arg]
 
         # --- Log Result ---
         if evaluator:
