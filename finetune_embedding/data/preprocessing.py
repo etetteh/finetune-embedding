@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Union  # Added List
 
-from datasets import Dataset, DatasetDict
+from datasets import Dataset, DatasetDict  # type: ignore[import-untyped]
 
 # Use absolute imports
 from finetune_embedding.config.settings import (
