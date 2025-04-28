@@ -3,7 +3,7 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 # Import Dataset type hint if not already present
-from datasets import Dataset
+from datasets import Dataset  # type: ignore[import-untyped]
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import mine_hard_negatives
 
