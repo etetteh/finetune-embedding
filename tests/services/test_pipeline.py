@@ -9,6 +9,7 @@ import torch
 from finetune_embedding.config.settings import (
     AppSettings,
     DatasetConfig,
+    LoRAConfig,
     ModelConfig,
     TrainingConfig,
 )
@@ -295,16 +296,20 @@ def test_pipeline_run_with_hnm(minimal_app_settings, mock_pipeline_dependencies)
 
 def test_pipeline_run_with_lora(minimal_app_settings, mock_pipeline_dependencies):
     """Test the pipeline runs correctly when LoRA is enabled."""
+    # --- FIX: Ensure lora object exists before setting attribute ---
+    if minimal_app_settings.lora is None:
+        minimal_app_settings.lora = LoRAConfig()  # Create default LoRAConfig
     minimal_app_settings.lora.use_lora = True  # Enable LoRA
+    # --- END FIX ---
+
     service = FineTuningService(minimal_app_settings)
     service.run_pipeline()
 
-    # --- Check LoRA was called with positional args (as fixed before) ---
+    # Check LoRA was called
     mock_pipeline_dependencies["add_lora_adapter"].assert_called_once_with(
         ANY,  # model
         minimal_app_settings.lora,  # lora_config
     )
-    # --- END FIX ---
 
 
 @pytest.mark.parametrize(
@@ -355,6 +360,8 @@ def test_pipeline_error_propagation(
     if stage_name == "Hard Negative Mining":
         minimal_app_settings.dataset.dataset_format = "pair"
     if stage_name == "Applying LoRA":
+        if minimal_app_settings.lora is None:
+            minimal_app_settings.lora = LoRAConfig()  # Create default LoRAConfig
         minimal_app_settings.lora.use_lora = True
     # Special setup for TrainingWrapper failure (mock the class init)
     if stage_name == "Training":
