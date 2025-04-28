@@ -2,7 +2,7 @@
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from datasets import Dataset, DatasetDict, load_dataset
+from datasets import Dataset, DatasetDict, load_dataset  # type: ignore[import-untyped]
 
 # Use absolute imports
 from finetune_embedding.config.settings import DatasetConfig
