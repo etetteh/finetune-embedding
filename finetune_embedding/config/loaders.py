@@ -3,10 +3,10 @@ import argparse
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 # Use absolute imports within the package
 from finetune_embedding.config.settings import (
@@ -403,7 +403,7 @@ def _create_arg_parser() -> argparse.ArgumentParser:
 def _structure_config_dict(flat_config: Dict[str, Any]) -> Dict[str, Any]:
     """Converts a flat dictionary (from argparse) into a nested one for Pydantic."""
     # Initialize with top-level keys and empty dicts for nested models
-    structured = {
+    structured: Dict[str, Any] = {
         "log_file": flat_config.get("log_file"),
         "log_level": flat_config.get("log_level"),
         "model": {},
@@ -414,7 +414,7 @@ def _structure_config_dict(flat_config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     # Helper to populate nested dicts, handling None values and prefixes
-    def populate(target_dict: Dict, model_cls: type, prefix: str = ""):
+    def populate(target_dict: Dict, model_cls: Type[BaseModel], prefix: str = ""):
         for field_name in model_cls.model_fields.keys():
             arg_name = f"{prefix}{field_name}"
             if arg_name in flat_config and flat_config[arg_name] is not None:
