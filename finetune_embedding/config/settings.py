@@ -180,8 +180,8 @@ class AppSettings(BaseModel):
 
     model: ModelConfig
     dataset: DatasetConfig
-    hnm: HNMConfig = Field(default_factory=HNMConfig)
-    lora: LoRAConfig = Field(default_factory=LoRAConfig)
+    hnm: Optional[HNMConfig] = Field(default=None)  # _factory=HNMConfig)
+    lora: Optional[LoRAConfig] = Field(default=None)  # _factory=LoRAConfig)
     training: TrainingConfig
 
     # --- V2 Style Config ---
