@@ -115,11 +115,14 @@ class FineTuningService:
                     "Skipping Hard Negative Mining (initial format not 'pair')."
                 )
 
-            if self.settings.lora.use_lora:
-                logger.info("--- Stage: Applying LoRA ---")
-                add_lora_adapter(model, self.settings.lora)
+            if self.settings.lora and self.settings.lora.use_lora:
+                logger.info("LoRA is enabled. Applying adapter...")
+                # Call add_lora_adapter or other LoRA-specific logic
+                add_lora_adapter(
+                    model, self.settings.lora
+                )  # Pass the LoRA config object
             else:
-                logger.info("Skipping LoRA.")
+                logger.info("LoRA is not enabled. Skipping adapter.")
 
             logger.info("--- Stage: Loss Creation ---")
             loss = create_loss_function(
