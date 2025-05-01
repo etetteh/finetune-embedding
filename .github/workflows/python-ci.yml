@@ -5,16 +5,103 @@ name: Python CI - FineTune Embedding
 on:
   push:
     branches: [ "main", "master" ] # Adjust branch names if needed
+    # Optional: Limit paths if you only want to trigger on code changes
+    # paths:
+    #   - "**.py"
+    #   - "pyproject.toml"
+    #   - "requirements.txt" # Include if you still use this
+    #   - ".github/workflows/python-ci.yml"
   pull_request:
     branches: [ "main", "master" ] # Adjust branch names if needed
+    # Optional: Limit paths
+    # paths:
+    #   - "**.py"
+    #   - "pyproject.toml"
+    #   - "requirements.txt" # Include if you still use this
+    #   - ".github/workflows/python-ci.yml"
+  # Allow manual triggering
+  workflow_dispatch:
+
+# Environment variables available to all jobs
+env:
+  # Define the Python version used for linting, building, and coverage upload
+  PYTHON_LATEST: "3.13"
+  # Set a default output directory for tests/builds if your code expects one
+  # This helps standardize paths across different runners/jobs
+  # DEFAULT_OUTPUT_DIR: "./ci_output" # Example
 
 jobs:
-  build-and-test:
+  lint-and-typecheck:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest # Use a standard runner
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Needed for some tools like git-based versioning or history checks
+
+    - name: Set up Python ${{ env.PYTHON_LATEST }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_LATEST }}
+        # Enable caching for pip dependencies
+        cache: pip
+        # Specify dependency files that should trigger cache invalidation
+        cache-dependency-path: |
+          pyproject.toml
+          # If you still use requirements.txt, include it:
+          # requirements.txt
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install project with [dev] dependencies using pyproject.toml
+        # This is the preferred modern approach
+        if [ -f pyproject.toml ]; then
+          pip install -e ".[dev]"
+        # Fallback for older projects using requirements files
+        elif [ -f requirements-dev.txt ]; then
+           pip install -r requirements.txt -r requirements-dev.txt
+        elif [ -f requirements.txt ]; then
+           pip install -r requirements.txt
+           # Explicitly install dev tools if not in requirements-dev.txt
+           pip install ruff mypy # Add other tools like flake8, black, isort if needed
+        else
+          echo "::error::No pyproject.toml or requirements.txt found. Cannot install dependencies."
+          exit 1 # Fail the job if dependencies cannot be installed
+        fi
+
+    - name: Lint with Ruff
+      run: |
+        # Use --output-format=github for annotations in the PR/commit view
+        # Fail the job if linting issues are found (default behavior)
+        ruff check . --output-format=github --statistics
+
+    - name: Check formatting with Ruff
+      run: |
+        # Check if code is formatted correctly, fail if not
+        ruff format --check .
+
+    - name: Type check with mypy
+      # continue-on-error: true # Consider removing this once mypy errors are fixed
+      run: |
+        # Run mypy on your main package directory
+        # --install-types and --non-interactive help with missing type stubs
+        mypy finetune_embedding/ --install-types --non-interactive
+
+
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    # This job depends on linting and type checking passing
+    needs: lint-and-typecheck
     runs-on: ubuntu-latest
     strategy:
+      # Don't fail all jobs if one Python version fails
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"] # Test against multiple Python versions
+        # Test against multiple Python versions
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        # Note: 3.9 will reach EOL in October 2025, 3.14 is planned for October 2025
 
     steps:
     - name: Checkout code
@@ -24,44 +111,109 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        # Enable caching for pip dependencies
+        cache: pip
+        # Specify dependency files that should trigger cache invalidation
+        cache-dependency-path: |
+          pyproject.toml
+          # If you still use requirements.txt, include it:
+          # requirements.txt
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Install using pyproject.toml if it exists and defines dependencies
+        # Install project with [dev] dependencies using pyproject.toml
+        # This is the preferred modern approach
         if [ -f pyproject.toml ]; then
+          # Include [test] extra if defined, otherwise just [dev]
+          # Adjust if your test dependencies are in a separate extra like [test]
           pip install -e ".[dev]"
-        # Fallback to requirements.txt if pyproject.toml doesn't handle deps
+        # Fallback for older projects using requirements files
+        elif [ -f requirements-dev.txt ]; then
+           pip install -r requirements.txt -r requirements-dev.txt
         elif [ -f requirements.txt ]; then
-          pip install -r requirements.txt
-          # Install dev tools separately if needed
-          pip install pytest pytest-mock pytest-cov flake8 black isort mypy
+           pip install -r requirements.txt
+           # Explicitly install test tools if not in requirements files
+           pip install pytest pytest-mock pytest-cov
         else
-          echo "Warning: No pyproject.toml or requirements.txt found. Skipping dependency installation."
+          echo "::error::No pyproject.toml or requirements.txt found. Cannot install dependencies."
+          exit 1 # Fail the job if dependencies cannot be installed
         fi
-
-    - name: Lint and Format Check with Ruff
-      run: |
-        # Check linting rules (including complexity C90) and formatting
-        ruff check . --statistics
-        ruff format --check .
-
-    - name: Type check with mypy
-      run: |
-        # Run mypy on the main package source
-        mypy finetune_embedding/
 
     - name: Run tests with pytest
       run: |
         # -v: verbose output
+        # -s: show print statements (useful for debugging)
         # --cov: generate coverage report for the main package
-        # Change package name here
-        pytest -v --cov=finetune_embedding --cov-report=xml
+        # --cov-report=xml: generate XML coverage report (for Codecov)
+        # --cov-report=term: print coverage summary to terminal
+        # --junitxml: generate JUnit XML report (for GitHub test results UI)
+        # Change package name here if needed
+        pytest -v -s --cov=finetune_embedding --cov-report=xml --cov-report=term --junitxml=test-results.xml
 
-    # Optional: Upload coverage report (requires Codecov setup)
-    # - name: Upload coverage to Codecov
-    #   uses: codecov/codecov-action@v4
-    #   with:
-    #     token: ${{ secrets.CODECOV_TOKEN }} # Add CODECOV_TOKEN secret to repo settings
-    #     files: ./coverage.xml
-    #     fail_ci_if_error: true
+
+  package:
+    name: Build and Verify Package
+    # This job depends on the test job passing for at least one Python version
+    # We use the latest Python version for building
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ env.PYTHON_LATEST }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_LATEST }}
+        cache: pip
+        cache-dependency-path: |
+          pyproject.toml
+          # If you still use requirements.txt, include it:
+          # requirements.txt
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install tools needed for building and checking the package
+        pip install build twine check-wheel-contents
+
+    - name: Build package
+      run: |
+        # Build the source distribution and wheel
+        python -m build
+
+    - name: Check package
+      run: |
+        # Check the metadata and structure of the built package
+        twine check dist/*
+        # Check wheel specific contents
+        if [ -f dist/*.whl ]; then
+          check-wheel-contents dist/*.whl
+        fi
+
+
+  # Integration job to provide a clear overall status
+  success:
+    name: CI Success
+    # This job depends on all previous jobs
+    needs: [lint-and-typecheck, test, package]
+    # This job should run even if previous jobs failed, to report the overall status
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Check if all required jobs succeeded
+        run: |
+          # Check the result of each required job
+          # Note: needs.<job_name>.result will be 'success', 'failure', 'cancelled', or 'skipped'
+          # We check if they are explicitly 'success'
+          if [[ "${{ needs.lint-and-typecheck.result }}" == "success" && \
+                "${{ needs.test.result }}" == "success" && \
+                "${{ needs.package.result }}" == "success" ]]; then
+            echo "All checks passed successfully!"
+            exit 0
+          else
+            echo "One or more required checks failed."
+            # Exit with a non-zero code to mark this job (and the overall workflow) as failed
+            exit 1
+          fi
